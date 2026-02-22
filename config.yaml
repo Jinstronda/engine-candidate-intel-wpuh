@@ -1,0 +1,271 @@
+api_key: null
+allowed_origins:
+- '*'
+systems:
+- id: candidate-intelligence-system
+  name: Candidate Intelligence System
+  description: An end-to-end suite for candidate onboarding and career growth, featuring
+    voice-to-profile synthesis and a persistent AI coaching partner named Jack.
+  topology: sequential
+  agents:
+  - type: analyst
+    prompt: "You are a Profile Intelligence Analyst. Your role is to process raw candidate\
+      \ input\u2014whether from transcripts, chat messages, or resumes\u2014and extract\
+      \ structured professional entities like skills, seniority levels, and career\
+      \ objectives. Use tavily_search to contextualize candidate experience against\
+      \ current job market trends and salary benchmarks."
+    tools:
+    - tavily_search
+    - parse_document
+    - calculate
+  - type: writer
+    prompt: You are 'Jack', a supportive and expert AI career partner. Your goal is
+      to transform analyzed profile data into a warm, conversational coaching experience.
+      You provide interview preparation strategies, suggest specific career pivots,
+      and offer encouragement based on the candidate's unique background and the goals
+      identified by the analyst.
+    tools:
+    - parse_document
+  - type: validator
+    prompt: You are the Coaching Quality Gate. Review the output from Jack to ensure
+      it is highly personalized, professional, and free of generic platitudes. Verify
+      that any extracted profile data is formatted correctly and that the response
+      addresses the candidate's specific input. Call accept_output only if the response
+      meets high-quality mentorship standards.
+    tools:
+    - accept_output
+    - reject_output
+- id: employer-requirement-system
+  name: Employer Requirement System
+  description: Transcribes employer briefing sessions into structured job requirements
+    and candidate filters via a multi-step analysis pipeline.
+  topology: sequential
+  agents:
+  - type: writer
+    prompt: You are a specialized Recruitment Discovery Agent. Your role is to process
+      employer input from a briefing session and maintain a professional, probing
+      dialogue. If the input is a chat message, formulate the next logical question
+      to uncover technical needs or culture fit. If the input is a request to finalize,
+      summarize the entire conversation history into a coherent narrative of the ideal
+      candidate.
+    tools:
+    - parse_document
+  - type: analyst
+    prompt: You are a Requirements Extraction Specialist. Take the narrative or conversation
+      summary provided by the previous agent and translate it into structured data.
+      Identify mandatory technical skills, preferred experience levels (in years),
+      and specific candidate personas. Use the calculate tool to normalize experience
+      ranges and the parse_document tool if any external job descriptions were referenced
+      in the conversation.
+    tools:
+    - calculate
+    - parse_document
+  - type: validator
+    prompt: You are the Quality Assurance Gate for job profiles. Review the structured
+      requirements produced by the analyst. Ensure that every profile has a clear
+      job title, at least three technical keywords, and a defined experience level.
+      If the data is incomplete or the chat response is missing a clear next step,
+      use reject_output to retry the process; otherwise, use accept_output to finalize
+      the profile.
+    tools:
+    - accept_output
+    - reject_output
+- id: recruitment-matching-engine
+  name: Recruitment Matching Engine
+  description: Autonomous matching engine that ranks candidates against job requirements
+    and explains fit reasoning.
+  topology: single
+  agents:
+  - type: analyst
+    prompt: You are a recruitment data scientist specializing in semantic fit analysis.
+      Your goal is to take specific job requirements and compare them against candidate
+      profiles from the VectorStore and Candidate tables. Use the score_candidate
+      tool to normalize fit scores and the calculate tool to weight specific technical
+      requirements higher than soft skills when necessary. Provide a detailed reasoning
+      string for every match that highlights both experience overlap and potential
+      gaps.
+    tools:
+    - calculate
+    - score_candidate
+    - parse_document
+    - tavily_search
+endpoints:
+- slug: candidate-chat
+  description: Simulates an introductory conversational interaction with the AI partner
+    'Jack' to build rapport.
+  usage: Called from the candidate dashboard when the user first interacts with the
+    simulation bubble.
+  system_id: candidate-intelligence-system
+  contract:
+  - name: input
+    type: string
+    description: The message or greeting sent by the candidate to initiate the session
+  response:
+  - name: response
+    type: string
+    description: The AI partner's conversational response
+  - name: suggested_topics
+    type: array
+    description: A list of follow-up topics the candidate might want to discuss with
+      Jack
+  prompt: 'Respond as Jack to the candidate''s message: {input}. Keep the tone light
+    and welcoming, focusing on establishing a long-term coaching partnership.'
+- slug: candidate-voice-onboarding
+  description: Sets the context for a voice-based session where the candidate describes
+    their career aspirations.
+  usage: Called when the candidate enters the 'Voice Onboarding' screen to generate
+    the opening prompt.
+  system_id: candidate-intelligence-system
+  contract:
+  - name: candidate_name
+    type: string
+    description: The first name of the candidate to personalize the greeting
+  response:
+  - name: prompt_text
+    type: string
+    description: The script for the voice assistant to read aloud to the candidate
+  - name: session_objective
+    type: string
+    description: A brief internal summary of what data needs to be captured in this
+      voice session
+  prompt: Generate an opening script for {candidate_name}'s voice onboarding session.
+    Ask them to describe their 'dream role' and what they value most in a workplace
+    culture.
+- slug: api-candidate-chat
+  description: Main real-time chat endpoint for career goals analysis and job market
+    insights.
+  usage: Called whenever the candidate sends a message in the persistent dashboard
+    chat sidebar.
+  system_id: candidate-intelligence-system
+  contract:
+  - name: message
+    type: string
+    description: The candidate's natural language question or update
+  - name: candidate_id
+    type: string
+    description: The unique identifier for the candidate's persistent profile
+  response:
+  - name: ai_message
+    type: string
+    description: The structured coaching response from Jack
+  - name: suggested_actions
+    type: array
+    description: Actionable steps like 'Update LinkedIn' or 'Practice SQL' based on
+      the conversation
+  - name: insights
+    type: object
+    description: Market data insights relevant to the candidate's specific query
+  prompt: 'Analyze {candidate_id}''s request: {message}. Provide a coaching response
+    that incorporates current market trends and suggests specific professional growth
+    steps.'
+- slug: api-transcribe-onboarding
+  description: Processes audio data to build the candidate's initial structured profile
+    via entity extraction.
+  usage: Called automatically after a candidate completes their voice onboarding audio
+    recording.
+  system_id: candidate-intelligence-system
+  contract:
+  - name: audio_url
+    type: string
+    description: The URL to the recorded audio file from the onboarding session
+  - name: candidate_id
+    type: string
+    description: The identifier for the candidate to attach the extracted profile
+      to
+  response:
+  - name: transcript
+    type: string
+    description: The full text transcription of the onboarding session
+  - name: extracted_entities
+    type: object
+    description: Structured data including skills, years of experience, and desired
+      industries
+  - name: profile_summary
+    type: string
+    description: A 2-3 sentence professional narrative summarizing the candidate's
+      identity
+  prompt: Process the audio from {audio_url} for candidate {candidate_id}. Transcribe
+    the speech, extract professional entities, and build a cohesive initial profile
+    summary.
+- slug: employer-briefing-chat
+  description: Maintains an interactive discovery session with the employer to uncover
+    role requirements.
+  usage: Called every time the employer sends a message in the briefing chat window.
+  system_id: employer-requirement-system
+  contract:
+  - name: input
+    type: string
+    description: The latest message sent by the employer during the briefing session
+  response:
+  - name: reply
+    type: string
+    description: The assistant's next question or response to keep the discovery process
+      moving
+  - name: current_profile_snapshot
+    type: object
+    description: A summary of the requirements captured so far in the session
+  - name: is_ready_to_extract
+    type: boolean
+    description: Flag indicating if enough information has been gathered to generate
+      the final filters
+  prompt: 'Process the employer''s message: ''{input}''. Evaluate if we have enough
+    detail on technical skills, seniority, and team fit. If not, ask a specific follow-up
+    question. Provide a snapshot of current requirements.'
+- slug: api-extract-requirements
+  description: Converts a completed briefing conversation into high-fidelity search
+    filters and job attributes.
+  usage: Called when the employer clicks 'Generate Requirements' or the chat reaches
+    a natural conclusion.
+  system_id: employer-requirement-system
+  contract:
+  - name: conversation_id
+    type: string
+    description: The unique identifier for the chat session containing the briefing
+      transcript
+  response:
+  - name: job_title
+    type: string
+    description: The finalized professional title for the role
+  - name: technical_skills
+    type: array
+    description: List of required technologies and tools
+  - name: experience_level
+    type: string
+    description: Seniority description (e.g., Mid-Level, Staff, 5+ years)
+  - name: search_filters
+    type: object
+    description: Structured parameters for LinkedIn or ATS searching
+  - name: persona_summary
+    type: string
+    description: A qualitative description of the ideal candidate's background and
+      motivation
+  prompt: Synthesize the full transcript associated with {conversation_id}. Extract
+    precise technical filters and candidate personas. Ensure the output is structured
+    for direct injection into the JobPosting and RequirementFilters database tables.
+- slug: match-candidates
+  description: Performs a semantic search and cross-references candidate profiles
+    against job briefs to generate relevance scores and fit explanations.
+  usage: Called by the recruiter dashboard when viewing a specific job posting to
+    find the best available talent in the database.
+  system_id: recruitment-matching-engine
+  contract:
+  - name: job_id
+    type: string
+    description: The unique identifier of the job posting to match candidates against
+  - name: limit
+    type: number
+    description: The maximum number of candidate matches to return in the response
+  response:
+  - name: matches
+    type: array
+    description: A list of candidate match objects containing candidate_id, match_score,
+      and reasoning
+  - name: search_metadata
+    type: object
+    description: Information about the search execution, including total candidates
+      scanned and processing time
+  prompt: Analyze the requirements for job {job_id} and find the top {limit} candidates
+    from the pool. For each candidate, evaluate their profile using the score_candidate
+    tool. Return a structured list including the candidate's ID, a match score from
+    1-100, and a detailed reasoning string explaining why they are a fit (or what
+    they are missing) based on the specific job context.
